@@ -17,6 +17,10 @@
     <script src="/MediaStreamRecorder.js"></script>
     <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
 
+    <script src="/js/socket.io/socket.io.js"></script>
+    <script src="/js/moment.min.js"></script>
+    <script src="/js/jquery-1.7.2.min.js"></script>
+
     <link rel="stylesheet" href="https://cdn.webrtc-experiment.com/style.css">
 
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
@@ -45,6 +49,18 @@
             font-size: inherit;
             margin: 0;
         }
+
+        body {
+            padding:20px;
+        }
+        #console {
+            height: 400px;
+            overflow: auto;
+        }
+        .username-msg {color:orange;}
+        .connect-msg {color:green;}
+        .disconnect-msg {color:red;}
+        .send-msg {color:#888}
     </style>
 </head>
 
@@ -108,7 +124,23 @@
             <div id="videos-container">
             </div>
         </section>
+        <section class="chatroom">
+            <h1>Netty-socketio Demo Chat</h1>
+
+            <br/>
+
+            <div id="console" class="well">
+            </div>
+
+            <form class="well form-inline" onsubmit="return false;">
+               <input id="msg" class="input-xlarge" type="text" placeholder="Type something..."/>
+               <button type="button" onClick="sendMessage()" class="btn" id="send">Send</button>
+               <button type="button" onClick="sendDisconnect()" class="btn">Disconnect</button>
+            </form>
+        </section>
         <script>
+            var blobs = [];
+
             function captureUserMedia(mediaConstraints, successCallback, errorCallback) {
                 navigator.mediaDevices.getUserMedia(mediaConstraints).then(successCallback).catch(errorCallback);
             }
@@ -205,6 +237,9 @@
 
                     videosContainer.appendChild(a);
                     videosContainer.appendChild(document.createElement('hr'));
+
+                    var jsonObject = {userName: userName, message: blob};
+                    socket.emit('chatevent', jsonObject);
                 };
 
                 var timeInterval = document.querySelector('#time-interval').value;
@@ -217,6 +252,34 @@
                 document.querySelector('#stop-recording').disabled = false;
                 document.querySelector('#pause-recording').disabled = false;
                 document.querySelector('#save-recording').disabled = false;
+
+                setInterval(function(){
+
+                    for(var userName in blobs){
+                        var blob = blobs[userName].pop();
+                        if(blob){
+                            var video = document.createElement('video');
+
+                            var videoWidth = document.getElementById('video-width').value || 320;
+                            var videoHeight = document.getElementById('video-height').value || 240;
+
+                            video = mergeProps(video, {
+                                id: userName,
+                                controls: true,
+                                muted: true,
+                                width: videoWidth,
+                                height: videoHeight
+                            });
+                            video.srcObject = blob;
+                            video.play();
+
+                            videosContainer.appendChild(video);
+                            videosContainer.appendChild(document.createElement('hr'));
+                        }
+                    }
+
+                    
+                },timeInterval);
             }
 
             function onMediaError(e) {
@@ -244,6 +307,51 @@
             window.onbeforeunload = function() {
                 document.querySelector('#start-recording').disabled = false;
             };
+        </script>
+
+        <script>
+
+            var userName = 'user' + Math.floor((Math.random()*1000)+1);
+
+            var socket =  io.connect('http://localhost:9092');
+
+            socket.on('connect', function() {
+                output('<span class="connect-msg">Client has connected to the server!</span>');
+            });
+
+            socket.on('chatevent', function(data) {
+                output('<span class="username-msg">' + data.userName + ':</span> ' + data.message);
+                blobs[data.userName] = blobs[data.userName] || [];
+                blobs[data.userName].push(data.message);
+            });
+
+            socket.on('disconnect', function() {
+                output('<span class="disconnect-msg">The client has disconnected!</span>');
+            });
+
+            function sendDisconnect() {
+                socket.disconnect();
+            }
+
+            function sendMessage() {
+                var message = $('#msg').val();
+                $('#msg').val('');
+
+                var jsonObject = {userName: userName, message: message};
+                socket.emit('chatevent', jsonObject);
+            }
+
+            function output(message) {
+                var currentTime = "<span class='time'>" +  moment().format('HH:mm:ss.SSS') + "</span>";
+                var element = $("<div>" + currentTime + " " + message + "</div>");
+                $('#console').prepend(element);
+            }
+
+            $(document).keydown(function(e){
+                if(e.keyCode == 13) {
+                    $('#send').click();
+                }
+            });
         </script>
 
         <section class="experiment">
